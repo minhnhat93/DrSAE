@@ -105,9 +105,10 @@ class PrintDictionaryInfo(SimpleExtension):
 
 
 class LearningRateMultiplier(StepRule):
-    def __init__(self, multiplier=0.5, num_iter=10000, min_learning_rate=0.000001, **kwargs):
-        super(LearningRateMultiplier, self).__init__(**kwargs)
-        self.num_iter = num_iter
+    def __init__(self, multiplier=0.5, batches_in_epochs=1000, every_n_epochs=1000, min_learning_rate=0.000001, **kwargs):
+        super(LearningRateMultiplier, self).__init__()
+        self.every_n_epochs = every_n_epochs
+        self.batches_in_epochs = batches_in_epochs
         self.iter_count = 0
         self.min_learning_rate = shared_floatx(min_learning_rate, "min_learning_rate")
         self.learning_rate = shared_floatx(1.0, "learning_rate")
@@ -116,7 +117,8 @@ class LearningRateMultiplier(StepRule):
 
     def compute_step(self, parameter, previous_step):
         self.iter_count += 1
-        if self.iter_count % self.num_iter == 0:
+        epochs_num = int(self.iter_count / self.batches_in_epochs)
+        if epochs_num % self.every_n_epochs == 0:
             self.learning_rate = self.learning_rate * self.multiplier
         return previous_step * tensor.maximum(self.learning_rate, self.min_learning_rate), []
 

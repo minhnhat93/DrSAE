@@ -13,6 +13,8 @@ class EncodeRole(VariableRole):
 
 ENCODE = EncodeRole()
 
+def srhinkage():
+    pass
 
 class LISTA(Initializable):
 

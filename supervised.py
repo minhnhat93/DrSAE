@@ -36,8 +36,9 @@ num_of_passes = 3
 LOAD = False
 if DEBUG:
     LOAD = True
-after_n_epochs = 10000
-train_batch_size = 1280
+after_n_epochs = 20000
+train_batch_size = 5120
+lambda_value = 0.005
 
 if LOAD:
     with open('main_loop_supervised.tar', 'rb') as src:
@@ -72,9 +73,9 @@ output = decode.apply(z)
 z_norm = L2NormalizeLayer().apply(z)
 y_hat = classification.apply(z_norm)
 
-loss_1 = SquaredError().apply(x, output)
+loss_1 = 0.5 * SquaredError().apply(x, output)
 loss_1.name = 'loss_squared'
-loss_2 = 0.01 * AbsoluteError().apply(z, 0)
+loss_2 = lambda_value * AbsoluteError().apply(z, 0)
 loss_2.name = 'loss_sparse'
 loss_3 = CategoricalCrossEntropy().apply(y.flatten(), Softmax().apply(y_hat))
 loss_3.name = 'loss_classification'
@@ -98,7 +99,7 @@ mnist_test = MNIST(("test",))
 data_stream_test = Flatten(DataStream.default_stream(
     mnist_test,
     iteration_scheme=SequentialScheme(
-        mnist_test.num_examples, batch_size=1280)))
+        mnist_test.num_examples, batch_size=mnist_test.num_examples)))
 data_stream_test = MeanShift(data_stream=data_stream_test, axis=1, which_sources='features')
 data_stream_test = L2NormalizeTransform(data_stream=data_stream_test, axis=1, which_sources='features')
 
@@ -110,14 +111,14 @@ cg = ComputationGraph(loss)
 C, b, S, E, D = cg.parameters
 b_scale = 1.0/num_of_passes
 S_scale = 1.0/(num_of_passes-1)
-E_scale = 1.0/num_of_passes
+E_scale = 5.0/num_of_passes
 D_scale = 1.0
 C_scale = 1.0/5.0
 
 from utils import export_image_array
 if DEBUG:
-    export_image_array(D.eval(), '/home/nhat/dictionary_3/dictionary/','','d')
-    export_image_array(E.T.eval(), '/home/nhat/dictionary_3/dictionary/','','e')
+    export_image_array(D.eval(), '/home/nhat/dictionary_2/dictionary/','','d2')
+    export_image_array(E.T.eval(), '/home/nhat/dictionary_2/dictionary/','','e2')
 #DrawFilterData([D, E], n_rows=4, n_cols=8, n_filters=16, sleep=0, every_n_epochs=1).do(0)
 
 for data in data_stream.get_epoch_iterator():
@@ -127,19 +128,17 @@ for data in data_stream.get_epoch_iterator():
     Z_partial = z_partial.eval({x: data[0]})
     o_partial = decode.apply(z_partial).eval({x: data[0]})
     if DEBUG:
-        export_image_array(data[0], '/home/nhat/dictionary_3/reconstruction/','','x')
-        export_image_array(o, '/home/nhat/dictionary_3/reconstruction/','','o')
+        export_image_array(data[0], '/home/nhat/dictionary_2/reconstruction/','','x2')
+        export_image_array(o, '/home/nhat/dictionary_2/reconstruction/','','o2')
     break
 
 algorithm = GradientDescent(cost=loss, parameters=cg.parameters,
                             step_rule=CompositeRule([
-                                Restrict(Scale(learning_rate=b_scale), [b]),
-                                Restrict(Scale(learning_rate=S_scale), [S]),
-                                Restrict(Scale(learning_rate=E_scale), [E]),
-                                Restrict(Scale(learning_rate=D_scale), [D]),
-                                Restrict(Scale(learning_rate=C_scale), [C]),
-                                #AdaDelta(),
-                                Scale(learning_rate=0.1),
+                                AdaDelta(),
+                                Restrict(Scale(learning_rate=1.0/num_of_passes), [b]),
+                                Restrict(Scale(learning_rate=1.0/(num_of_passes-1)), [S]),
+                                Restrict(Scale(learning_rate=5.0/num_of_passes), [E]),
+                                Restrict(Scale(learning_rate=1.0), [D]),
                                 Restrict(VariableClipping(1.25/num_of_passes, axis=1), [E]),
                                 Restrict(VariableClipping(1, axis=0), [D]),
                                 Restrict(VariableClipping(5, axis=1), [C]),
@@ -153,7 +152,7 @@ main_loop = MainLoop(data_stream=data_stream, algorithm=algorithm, model=cg,
                                  TrainingDataMonitoring([loss, loss_1, loss_2, loss_3, misclassification],
                                                         after_batch=True),
                                  Checkpoint('main_loop_supervised.tar', parameters=cg.parameters, save_main_loop=False,
-                                            use_cpickle=True, every_n_epochs=20),
+                                            use_cpickle=True, every_n_epochs=100),
                                  Printing(),
                                  DrawFilterData([D, E], n_rows=4, n_cols=8, n_filters=16, sleep=0, every_n_epochs=20,
                                                 before_training=True),
